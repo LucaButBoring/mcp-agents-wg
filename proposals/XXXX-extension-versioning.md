@@ -9,7 +9,7 @@
 
 ## Abstract
 
-[SEP-2133](https://modelcontextprotocol.io/seps/2133-extensions) establishes that extensions evolve independently of the core protocol and **SHOULD** be versioned, but it leaves the versioning approach unspecified and defers extension dependency declaration to future work. This proposal fills both gaps with a single mechanism. Each extension carries a [semantic version](https://semver.org/spec/v2.0.0.html) in its settings object, and **MAY** declare the core protocol version its behavior depends on. A difference in the major version means the two peers are incompatible; they negotiate a shared major version inline, the same way they negotiate a protocol version (see [protocol version negotiation](https://modelcontextprotocol.io/seps/2575-stateless-mcp#version-negotiation-flow)). A difference in the minor version is not a conflict: each peer uses the features common to both, and neither rejects the other. A difference in the patch version changes nothing about how the peers interoperate. A new error code, `-32005` (Unsupported Extension Version), reports a major-version mismatch and tells the client which major versions the server supports, so it can retry against one of them.
+[SEP-2133](https://modelcontextprotocol.io/seps/2133-extensions) establishes that extensions evolve independently of the core protocol and **SHOULD** be versioned, but it leaves the versioning approach unspecified and defers extension dependency declaration to future work. This proposal fills both gaps with a single mechanism. Each extension carries a [semantic version](https://semver.org/spec/v2.0.0.html) in its settings object, and **MAY** declare the core protocol version its behavior depends on. A difference in the major version means the two peers are incompatible; they negotiate a shared major version through inline retry, as they negotiate a protocol version (see [protocol version negotiation](https://modelcontextprotocol.io/seps/2575-stateless-mcp#version-negotiation-flow)). A difference in the minor version is not a conflict: each peer uses the features common to both, and neither rejects the other. A difference in the patch version changes nothing about how the peers interoperate. A new error code, `-32005` (Unsupported Extension Version), reports a major-version mismatch and tells the client which major versions the server supports, so it can retry against one of them.
 
 The mechanism is described generically and applies to any extension. This proposal draws its examples from the Tasks extension ([SEP-2663](https://modelcontextprotocol.io/seps/2663-tasks-extension)).
 
@@ -27,7 +27,7 @@ Extensions and the core protocol release on independent schedules, so a maintain
 
 ### Optional, non-breaking features cannot be advertised
 
-An additive change carries no such hazard, yet still cannot be communicated. SEP-2663 anticipates one — "This specification may be extended to support tasks over other request types in the future; implementations **SHOULD** be designed to accommodate additional request types" — but defines no way to advertise which of those additions a peer implements. Two peers can both advertise `io.modelcontextprotocol/tasks` while disagreeing on every feature added since the first release. A client that needs a later feature can only issue the request and observe whether the server honors it, which is the trial-and-error handshake the SEP-2663 redesign removed from capability negotiation.
+An additive change carries no such hazard, yet still cannot be communicated. SEP-2663 anticipates one — "This specification may be extended to support tasks over other request types in the future; implementations **SHOULD** be designed to accommodate additional request types in future revisions of this specification" — but defines no way to advertise which of those additions a peer implements. Two peers can both advertise `io.modelcontextprotocol/tasks` while disagreeing on every feature added since the first release. A client that needs a later feature can only issue the request and observe whether the server honors it, which is the trial-and-error handshake the SEP-2663 redesign removed from capability negotiation.
 
 The mechanism below addresses all three problems generically. Tasks gives the work added urgency: it is slated to return to the core protocol in a future revision, so any breaking changes are best made beforehand, while it is still an extension and free to iterate.
 
@@ -45,7 +45,7 @@ An extension's first published version is `1.0.0`. A version string that omits a
 
 ### Declaring an Extension Version
 
-A client declares the single extension version it targets for a request in the `version` field of that extension's settings object, within its per-request capabilities ([SEP-2575](https://modelcontextprotocol.io/seps/2575-stateless-mcp)):
+A client declares the single extension version it targets for a request in the `version` field of that extension's settings object, within the [SEP-2133](https://modelcontextprotocol.io/seps/2133-extensions) `extensions` map carried in its per-request capabilities ([SEP-2575](https://modelcontextprotocol.io/seps/2575-stateless-mcp)):
 
 ```jsonc
 // Client to server, in per-request capabilities
@@ -202,7 +202,7 @@ For a concrete case, suppose major version `2` of the Tasks extension adds task-
 
 ### Subscription Version Pinning
 
-When a client issues a `subscriptions/listen` request ([SEP-2575](https://modelcontextprotocol.io/seps/2575-stateless-mcp)) that includes extension-scoped notification types — for the Tasks extension, `notifications/tasks` — the effective version resolved for that request — the declared major version, and the effective minor version per [Minor Version Resolution](#minor-version-resolution) — is pinned for the lifetime of the subscription. A notification can carry minor-gated additive fields, so freezing the minor version, not the major version alone, is what keeps the schema stable across the subscription.
+When a client issues a `subscriptions/listen` request ([SEP-2575](https://modelcontextprotocol.io/seps/2575-stateless-mcp)) that includes extension-scoped notification types — for the Tasks extension, `notifications/tasks` — the effective version resolved for that request, from the `version` it declares in the listen request's per-request capabilities as for any other request, is pinned for the lifetime of the subscription. The pinned version is the declared major version together with the effective minor version per [Minor Version Resolution](#minor-version-resolution). A notification can carry minor-gated additive fields, so freezing the minor version, not the major version alone, is what keeps the schema stable across the subscription.
 
 The server **MUST NOT** send a notification that relies on a feature above the pinned effective version. If the server drops support for the pinned major version while the subscription is active, it **MUST** [close the subscription](https://modelcontextprotocol.io/seps/2575-stateless-mcp#stopping-a-subscription) rather than silently switch the client to another version.
 
